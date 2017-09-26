@@ -647,6 +647,8 @@ export function parseBackground(text: string, start: number = 0): Parsed<Backgro
     return { start, end, value };
 }
 
+// Selectors
+
 export type Combinator = "+" | "~" | ">" | " ";
 
 export interface UniversalSelector {
@@ -791,3 +793,266 @@ export function parseSelector(text: string, start: number = 0): Parsed<Selector>
 }
 
 // NOTE: parseSelectorsGroup is unimplemented as rework css will split the selector groups into selector string array...
+
+// Stylesheet
+
+// export interface AtRule {
+//     identifier: string;
+//     prelude?: string;
+//     block?: any;
+// }
+// export interface QualifiedRule {}
+
+// export type Rule = QualifiedRule | AtRule;
+
+// export interface Stylesheet {
+//     rules: Rule[];
+// }
+
+// const whitespaceRegEx = /\s*/gy;
+// const eofRegEx = /$/gy;
+
+// export function parseComponentValue(text: string, start: number = 0): Parsed<string> {
+//     // TODO: Pretty much read an input token, if it is { [ or (, parse a block and return it. Otherwise return the token...
+//     return null;
+// }
+
+// export type BlockType = "[]" | "()" | "{}";
+// interface SimpleBlock {
+//     block: BlockType;
+//     value: any[];
+// }
+
+// const closingBlockTokenMap = { "[": "]", "(": ")", "{": "}" };
+// const blockTypeMap: { [openingChar: string]: BlockType } = { "[": "[]", "(": "()", "{": "{}" };
+// export function parseSimpleBlock(text: string, start: number = 0): Parsed<SimpleBlock> {
+//     const startingToken = text[start];
+//     if (!(startingToken in closingBlockTokenMap)) {
+//         return null;
+//     }
+//     let end = start + 1;
+//     const value: SimpleBlock = {
+//         block: blockTypeMap[startingToken],
+//         value: []
+//     }
+//     const endingToken = closingBlockTokenMap[startingToken];
+//     return { start, end, value };
+// }
+
+// const atKeywordRegEx = /@(-?\w*)/gy; // No escaping and non-ASCII for simplicity
+// const semicolonRegEx = /;/gy;
+// export function parseAtKeyword(text: string, start: number = 0): Parsed<AtRule> {
+//     atKeywordRegEx.lastIndex = start;
+//     const atKeyword = atKeywordRegEx.exec(text);
+//     if (!atKeyword) {
+//         return null;
+//     }
+//     let end = atKeywordRegEx.lastIndex;
+//     const value: AtRule = { identifier: atKeyword[1] };
+
+//     do {
+//         if (text[end] === ";") { // TODO: Or EOF!
+//             end++;
+//             return { start, end, value };
+//         }
+
+//         // TODO: { rules } etc.
+//         const simpleBlock = parseSimpleBlock(text, end);
+//         if (simpleBlock) {
+//             end = simpleBlock.end;
+//             value.block = simpleBlock.value;
+//             return { start, end, value };
+//         }
+        
+//         // Read "component value" and assign it to the prelude?
+//     } while(false);
+//     return null;
+// }
+
+// export function parseStylesheet(text: string, start: number = 0): Parsed<Stylesheet> {
+//     let end = start;
+//     const value = { rules: [] };
+//     do {
+//         const atRule = parseAtKeyword(text, end);
+//         if (atRule) {
+//             end = atRule.end;
+//             value.rules.push(atRule.value);
+//         }
+
+//         // NOTE: Intentonally omitting CDO and CDC tokens... No support for <!-- and --> yet.
+
+//         whitespaceRegEx.lastIndex = end;
+//         const whitespace = whitespaceRegEx.exec(text);
+//         if (whitespace) {
+//             end = whitespaceRegEx.lastIndex;
+//             continue;
+//         }
+
+//         eofRegEx.lastIndex = end;
+//         const eof = eofRegEx.exec(text);
+//         if (eofRegEx) {
+//             end = eofRegEx.lastIndex;
+//             break;
+//         }
+//     } while(true);
+
+//     return { start, end, value };
+// }
+
+export interface Stylesheet {
+    rules: Rule[];
+}
+export interface AtRule {
+    identifier: string;
+    prelude?: string;
+    block?: any;
+}
+export interface QualifiedRule {}
+export type Rule = QualifiedRule | AtRule;
+
+
+export function parseStylesheet(text: string, start: number = 0): Parsed<Stylesheet> {
+    tokenizerRegEx.lastIndex = start;
+    let result: RegExpExecArray;
+    while(result = tokenizerRegEx.exec(text)) {
+        const [match, comment, ws] = result;
+        if (comment) {
+            console.log("Comment: " + comment);
+        } else if (ws) {
+            console.log("White space: " + ws);
+        }
+    }
+    return null;
+}
+
+const tokenizerRegEx = /(\/\*(?:[^\*]|\*[^\/])*\*\/)|((:?\s|\t|\n|\r\n|\r|\f)*)/gym;
+
+type TokenType = "comment" | "<whitespace-token>" | "<EOF-token>" | "<at-keyword-token>" | "<CDO-token>" | "<CDC-token>";
+interface InputToken {
+    type: TokenType;
+    text: string;
+}
+
+export class StylesheetParser {
+    private currentInputToken: InputToken = null;
+
+    private topLevel = true;
+    private currentTokenReconsumed = false;
+
+    constructor(private text) {
+    }
+
+    resetSharedRegEx() {
+        tokenizerRegEx.lastIndex = 0;
+    }
+
+    // Entry points
+
+    /**
+     * An entry point to parse a Stylesheet.
+     * https://www.w3.org/TR/css-syntax-3/#parse-a-stylesheet
+     */
+    parseAStylesheet() {
+        this.resetSharedRegEx();
+
+        const stylesheet: Stylesheet = {
+            rules: undefined
+        };
+        this.topLevel = true;
+        stylesheet.rules = this.consumeAListOfRules();
+        return stylesheet;
+    }
+
+    // Consumers
+
+    /**
+     * https://www.w3.org/TR/css-syntax-3/#consume-an-at-rule
+     */
+    consumeAnAtRule(): AtRule {
+        // TODO:
+        throw new Error("Not implemented!");
+    }
+
+    /**
+     * https://www.w3.org/TR/css-syntax-3/#consume-a-qualified-rule
+     */
+    consumeAQualifiedRule(): QualifiedRule {
+        // TODO:
+        throw new Error("Not implemented!");
+    }
+
+    /**
+     * https://www.w3.org/TR/css-syntax-3/#consume-a-list-of-rules
+     */
+    consumeAListOfRules(): Rule[] {
+        let rules: Rule[] = [];
+        do {
+            let rule: Rule;
+            this.consumeTheNextInputToken();
+            switch(this.currentInputToken.type) {
+                case "<whitespace-token>": continue;
+                case "<EOF-token>": return rules;
+                case "<CDO-token>":
+                case "<CDC-token>":
+                    if (this.topLevel) {
+                    } else {
+                        this.reconsumeTheCurrentInputToken();
+                        const rule = this.consumeAQualifiedRule();
+                        rule && rules.push(rule);
+                    }
+                    continue;
+                case "<at-keyword-token>":
+                    this.reconsumeTheCurrentInputToken();
+                    rule = this.consumeAnAtRule();
+                    rule && rules.push(rule);
+                    continue;
+                default:
+                    this.reconsumeTheCurrentInputToken();
+                    rule = this.consumeAQualifiedRule();
+                    rule && rules.push(rule);
+            }
+        } while(true);
+    }
+
+    consumeAllWhitespaceTokens() {
+        // Instead use a regex to consume all whitespace at once...
+        while(this.currentInputToken.type === "<whitespace-token>") {
+            this.consumeTheNextInputToken();
+        }
+    }
+
+    // Tokenizer
+
+    consumeTheNextInputToken() {
+        if (this.currentTokenReconsumed) {
+            this.currentTokenReconsumed = true;
+            return;
+        }
+
+        this.currentInputToken = this.consumeAToken();
+    }
+
+    reconsumeTheCurrentInputToken() {
+        this.currentTokenReconsumed = true;
+    }
+
+    /**
+     * https://www.w3.org/TR/css-syntax-3/#consume-a-token
+     */
+    consumeAToken(): InputToken {
+        const result = tokenizerRegEx.exec(this.text);
+        if (result) {
+            const [text, comment, whitespaceToken] = result;
+            if (comment) {
+                return { type: "comment", text };
+            } else if (whitespaceToken) {
+                return { type: "<whitespace-token>", text };
+            }
+        }
+        throw new Error("Not impleemnted, token character!");
+    }
+
+    syntaxError(message: string): Error {
+        return new Error(message); // TODO: position?
+    }
+}
