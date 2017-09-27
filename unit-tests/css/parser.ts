@@ -228,19 +228,26 @@ describe("css", () => {
                 assert.equal(roundtrip.length, original.length, "Expected round-tripped string lengths to match.");
             });
 
-            it.only("our parser is fast", () => {
+            it.skip("our parser is fast (flaky, gc, opts.)", () => {
                 function trapDuration(action: () => void) {
                     const [startSec, startMSec] = process.hrtime();
                     action();
                     const [endSec, endMSec] = process.hrtime();
                     return (endSec - startSec) * 1000 + (endMSec - startMSec) / 1000000;
                 }
-                const charByCharDuration = trapDuration(() => {
+                const charCodeByCharCodeDuration = trapDuration(() => {
                     let count = 0;
                     for (let i = 0; i < themeCoreLightIos.length; i++) {
                         count += themeCoreLightIos.charCodeAt(i);
                     }
                     assert.equal(count, 1218789);
+                });
+                const charByCharDuration = trapDuration(() => {
+                    let char;
+                    for (let i = 0; i < themeCoreLightIos.length; i++) {
+                        char = themeCoreLightIos.charAt(i);
+                    }
+                    assert.equal(char, "\n");
                 });
                 const reworkDuration = trapDuration(() => reworkCss.parse(themeCoreLightIos, { source: "nativescript-theme-core/css/core.light.css" }));
                 const shadyDuration = trapDuration(() => {
@@ -251,9 +258,9 @@ describe("css", () => {
                     const cssparser = new CSSParser(themeCoreLightIos);
                     const stylesheet = cssparser.tokenize();
                 });
-                console.log(`baseline: ${charByCharDuration} rework: ${reworkDuration}ms. shady: ${shadyDuration} nativescript: ${nativescriptDuration}`);
+                console.log(`codes-baseline: ${charCodeByCharCodeDuration}ms. chars-baseline: ${charByCharDuration}ms. rework: ${reworkDuration}ms. shady: ${shadyDuration}ms. nativescript: ${nativescriptDuration}ms.`);
                 assert.isAtMost(nativescriptDuration, reworkDuration / 8, "The NativeScript CSS owns in times the rework css parses");
-                assert.isAtMost(nativescriptDuration, shadyDuration / 2, "The NativeScript CSS owns in times the shady css parses");
+                assert.isAtMost(nativescriptDuration, shadyDuration / 3, "The NativeScript CSS owns in times the shady css parses");
             });
         });
     });
