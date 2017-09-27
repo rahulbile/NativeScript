@@ -295,9 +295,7 @@ function getTransitionListener(fragment: android.app.Fragment): ExpandedTransiti
                     traceWrite(`END ${toShortString(transition)} transition for ${expandedFragment}`, traceCategories.Transition);
                 }
 
-                const entry = getFragmentCallbacks(expandedFragment).entry;
-                const setCurrent = entry.enterTransitionListener === this || entry.reenterTransitionListener === this;
-                transitionOrAnimationCompleted(expandedFragment, setCurrent);
+                transitionOrAnimationCompleted(expandedFragment);
             }
 
             onTransitionResume(transition: android.transition.Transition): void {
@@ -358,9 +356,7 @@ function getAnimationListener(): android.animation.Animator.IAnimatorListener {
                     traceWrite(`END ${animator.transitionType} for ${fragment}`, traceCategories.Transition);
                 }
 
-                const entry = getFragmentCallbacks(fragment).entry;
-                const setCurrent = entry.enterAnimator === animator || entry.popEnterAnimator === animator;
-                transitionOrAnimationCompleted(fragment, setCurrent);
+                transitionOrAnimationCompleted(fragment);
             }
 
             onAnimationCancel(animator: ExpandedAnimator): void {
@@ -645,14 +641,19 @@ function transitionsCompleted(fragment: android.app.Fragment): boolean {
     return waitingQueue.size === 0;
 }
 
-function transitionOrAnimationCompleted(fragment: android.app.Fragment, setCurrent: boolean): void {
+function transitionOrAnimationCompleted(fragment: android.app.Fragment): void {
     if (transitionsCompleted(fragment)) {
         const callbacks = getFragmentCallbacks(fragment);
+        const entry = callbacks.entry;
         const frame = callbacks.frame;
-        const setAsCurrent = setCurrent ? fragment : fragmentCompleted;
+        const setAsCurrent = frame.isCurrent(entry) ? fragmentCompleted : fragment;
 
         fragmentCompleted = null;
-        setTimeout(() => frame.setCurrent(getFragmentCallbacks(setAsCurrent).entry));
+        // Will be null when Frame is shown modally...
+        // AnimationCompleted fires again (probably bug in android).
+        if (setAsCurrent) {
+            setTimeout(() => frame.setCurrent(getFragmentCallbacks(setAsCurrent).entry));
+        }
     } else {
         fragmentCompleted = fragment;
     }
