@@ -154,6 +154,11 @@ const pageFromBuilder = profile("pageFromBuilder", (moduleNamePath: string, modu
     return page;
 });
 
+// TODO: Consider if we need this one or we could go with resolvePageFromEntry only!
+export function loadViewFromEntry(entry: NavigationEntry): View {
+    return resolvePageFromEntry(entry);
+}
+
 export const resolvePageFromEntry = profile("resolvePageFromEntry", (entry: NavigationEntry): Page => {
     let page: Page;
 
@@ -197,7 +202,8 @@ export class FrameBase extends CustomLayoutView implements FrameDefinition {
     private _backStack: Array<BackstackEntry>;
     private _transition: NavigationTransition;
     private _navigationQueue: Array<NavigationContext>;
-
+    private _paramToNavigate: any;
+    
     public _isInFrameStack = false;
     public static defaultAnimatedNavigation = true;
     public static defaultTransition: NavigationTransition;
@@ -209,6 +215,22 @@ export class FrameBase extends CustomLayoutView implements FrameDefinition {
 
         this._backStack = new Array<BackstackEntry>();
         this._navigationQueue = new Array<NavigationContext>();
+    }
+
+    public _addChildFromBuilder(name: string, value: any) {
+        if (value instanceof Page) {
+            this.navigate({ create: () => value });
+        }
+    }
+
+    @profile
+    public onLoaded() {
+        super.onLoaded();
+
+        if (this._paramToNavigate) {
+            this.navigate(this._paramToNavigate);
+            this._paramToNavigate = undefined;
+        }
     }
 
     public canGoBack(): boolean {
@@ -279,6 +301,11 @@ export class FrameBase extends CustomLayoutView implements FrameDefinition {
     public navigate(param: any) {
         if (traceEnabled()) {
             traceWrite(`NAVIGATE`, traceCategories.Navigation);
+        }
+
+        if (!this.isLoaded) {
+            this._paramToNavigate = param;
+            return;
         }
 
         const entry = buildEntryFromArgs(param);

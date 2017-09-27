@@ -408,5 +408,9 @@ export function resolvePageFromEntry(entry: NavigationEntry): Page;
 /**
  * @private
  */
+export function loadViewFromEntry(entry: NavigationEntry): View;
+/**
+ * @private
+ */
 export function setFragmentCallbacks(fragment: any /*android.app.Fragment*/): void;
 //@endprivate

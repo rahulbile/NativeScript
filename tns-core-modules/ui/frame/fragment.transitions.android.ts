@@ -126,24 +126,6 @@ function updateAnimatorTarget(animator: ExpandedAnimator, fragment: android.app.
     }
 }
 
-export function _waitForAnimationEnd(newFragment, currentFragment): void {
-    if (waitingQueue.size > 0) {
-        throw new Error('Calling navigation before previous queue completes.');
-    }
-
-    if (newFragment) {
-        waitingQueue.add(newFragment);
-    }
-
-    if (currentFragment) {
-        waitingQueue.add(currentFragment);
-    }
-
-    if (waitingQueue.size === 0) {
-        throw new Error('At least one fragment should be specified.');
-    }
-}
-
 export function _setAndroidFragmentTransitions(
     animated: boolean,
     navigationTransition: NavigationTransition,
@@ -152,7 +134,9 @@ export function _setAndroidFragmentTransitions(
     fragmentTransaction: android.app.FragmentTransaction,
     manager: android.app.FragmentManager): void {
 
-    _waitForAnimationEnd(newFragment, currentFragment);
+    if (waitingQueue.size > 0) {
+        throw new Error('Calling navigation before previous queue completes.');
+    }
 
     if (sdkVersion() >= 21) {
         allowTransitionOverlap(currentFragment);
@@ -299,6 +283,7 @@ function getTransitionListener(fragment: android.app.Fragment): ExpandedTransiti
             }
 
             public onTransitionStart(transition: android.transition.Transition): void {
+                waitingQueue.add(this.fragment);
                 if (traceEnabled()) {
                     traceWrite(`START ${toShortString(transition)} transition for ${this.fragment}`, traceCategories.Transition);
                 }
@@ -310,7 +295,9 @@ function getTransitionListener(fragment: android.app.Fragment): ExpandedTransiti
                     traceWrite(`END ${toShortString(transition)} transition for ${expandedFragment}`, traceCategories.Transition);
                 }
 
-                transitionOrAnimationCompleted(expandedFragment);
+                const entry = getFragmentCallbacks(expandedFragment).entry;
+                const setCurrent = entry.enterTransitionListener === this || entry.reenterTransitionListener === this;
+                transitionOrAnimationCompleted(expandedFragment, setCurrent);
             }
 
             onTransitionResume(transition: android.transition.Transition): void {
@@ -353,6 +340,7 @@ function getAnimationListener(): android.animation.Animator.IAnimatorListener {
             }
 
             onAnimationStart(animator: ExpandedAnimator): void {
+                waitingQueue.add(animator.fragment);
                 if (traceEnabled()) {
                     traceWrite(`START ${animator.transitionType} for ${animator.fragment}`, traceCategories.Transition);
                 }
@@ -365,11 +353,14 @@ function getAnimationListener(): android.animation.Animator.IAnimatorListener {
             }
 
             onAnimationEnd(animator: ExpandedAnimator): void {
+                const fragment = animator.fragment;
                 if (traceEnabled()) {
-                    traceWrite(`END ${animator.transitionType} for ${animator.fragment}`, traceCategories.Transition);
+                    traceWrite(`END ${animator.transitionType} for ${fragment}`, traceCategories.Transition);
                 }
 
-                transitionOrAnimationCompleted(animator.fragment);
+                const entry = getFragmentCallbacks(fragment).entry;
+                const setCurrent = entry.enterAnimator === animator || entry.popEnterAnimator === animator;
+                transitionOrAnimationCompleted(fragment, setCurrent);
             }
 
             onAnimationCancel(animator: ExpandedAnimator): void {
@@ -654,12 +645,11 @@ function transitionsCompleted(fragment: android.app.Fragment): boolean {
     return waitingQueue.size === 0;
 }
 
-function transitionOrAnimationCompleted(fragment: android.app.Fragment): void {
+function transitionOrAnimationCompleted(fragment: android.app.Fragment, setCurrent: boolean): void {
     if (transitionsCompleted(fragment)) {
         const callbacks = getFragmentCallbacks(fragment);
-        const entry = callbacks.entry;
         const frame = callbacks.frame;
-        const setAsCurrent = frame.isCurrent(entry) ? fragmentCompleted : fragment;
+        const setAsCurrent = setCurrent ? fragment : fragmentCompleted;
 
         fragmentCompleted = null;
         setTimeout(() => frame.setCurrent(getFragmentCallbacks(setAsCurrent).entry));

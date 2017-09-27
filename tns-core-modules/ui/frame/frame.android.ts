@@ -6,9 +6,12 @@ import {
 import { Page } from "../page";
 
 // Types.
-import { FrameBase, application, NavigationContext, stack, goBack, View, Observable, traceEnabled, traceWrite, traceCategories } from "./frame-common";
+import {
+    FrameBase, application, NavigationContext, stack, goBack, View, Observable, loadViewFromEntry,
+    traceEnabled, traceWrite, traceCategories
+} from "./frame-common";
 import { DIALOG_FRAGMENT_TAG } from "../page/constants";
-import { _setAndroidFragmentTransitions, _waitForAnimationEnd, _onFragmentCreateAnimator, _updateAnimationFragment } from "./fragment.transitions";
+import { _setAndroidFragmentTransitions, _onFragmentCreateAnimator, _updateAnimationFragment } from "./fragment.transitions";
 
 import { profile } from "../../profiling";
 
@@ -75,7 +78,10 @@ export class Frame extends FrameBase {
     }
 
     public setCurrent(entry: BackstackEntry): void {
-        this.changeCurrentPage(entry);
+        if (this._currentEntry !== entry) {
+            this.changeCurrentPage(entry);
+        }
+
         this._currentEntry = entry;
         this._isBack = true;
         this._processNavigationQueue(entry.resolvedPage);
@@ -122,7 +128,13 @@ export class Frame extends FrameBase {
             return;
         }
 
-        const manager = activity.getFragmentManager();
+        let manager: android.app.FragmentManager;
+        const dialogFragment = (<any>global).dialogFragment;
+        if (dialogFragment) {
+            manager = dialogFragment.getChildFragmentManager();
+        } else {
+            manager = activity.getFragmentManager();
+        }
 
         // Current Fragment
         const currentFragment = this._currentEntry ? manager.findFragmentByTag(this._currentEntry.fragmentTag) : null;
@@ -171,12 +183,15 @@ export class Frame extends FrameBase {
         super._goBackCore(backstackEntry);
 
         navDepth = backstackEntry.navDepth;
-        const manager = this._android.activity.getFragmentManager();
-        if (manager.getBackStackEntryCount() > 0) {
-            const fragmentInBackstack = manager.findFragmentByTag(backstackEntry.fragmentTag);
-            const currentFragment = manager.findFragmentByTag(this._currentEntry.fragmentTag);
+        let manager: android.app.FragmentManager;
+        const dialogFragment = (<any>global).dialogFragment;
+        if (dialogFragment) {
+            manager = dialogFragment.getChildFragmentManager();
+        } else {
+            manager = this._android.activity.getFragmentManager();
+        }
 
-            _waitForAnimationEnd(fragmentInBackstack, currentFragment);
+        if (manager.getBackStackEntryCount() > 0) {
             // pop all other fragments up until the named one
             // this handles cases where user may navigate to an inner page without adding it on the backstack
             manager.popBackStack(backstackEntry.fragmentTag, android.app.FragmentManager.POP_BACK_STACK_INCLUSIVE);
@@ -184,16 +199,15 @@ export class Frame extends FrameBase {
     }
 
     public createNativeView() {
-        const root = new org.nativescript.widgets.ContentLayout(this._context);
-        if (this._containerViewId < 0) {
-            this._containerViewId = android.view.View.generateViewId();
-        }
-        return root;
+        return new org.nativescript.widgets.ContentLayout(this._context);
     }
 
     public initNativeView(): void {
         super.initNativeView();
         this._android.rootViewGroup = this.nativeViewProtected;
+        if (this._containerViewId < 0) {
+            this._containerViewId = android.view.View.generateViewId();
+        }
         this._android.rootViewGroup.setId(this._containerViewId);
     }
 
@@ -641,15 +655,16 @@ class ActivityCallbacksImplementation implements AndroidActivityCallbacks {
 
         if (!rootView) {
             navParam = application.getMainEntry();
-
             if (navParam) {
-                frame = new Frame();
+                if (application.shouldCreateRootFrame()) {
+                    frame = rootView = new Frame();
+                } else {
+                    rootView = loadViewFromEntry(navParam);
+                }
             } else {
                 // TODO: Throw an exception?
                 throw new Error("A Frame must be used to navigate to a Page.");
             }
-
-            rootView = frame;
         }
 
         // If there is savedInstanceState this call will recreate all fragments that were previously in the navigation.
@@ -665,7 +680,6 @@ class ActivityCallbacksImplementation implements AndroidActivityCallbacks {
         // Initialize native visual tree;
         rootView._setupAsRootView(activity);
         activity.setContentView(rootView.nativeViewProtected, new org.nativescript.widgets.CommonLayoutParams());
-        // frameId is negative w
         if (frame) {
             frame.navigate(navParam);
         }
