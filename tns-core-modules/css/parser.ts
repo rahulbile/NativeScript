@@ -792,16 +792,11 @@ export function parseSelector(text: string, start: number = 0): Parsed<Selector>
     return { start, end, value };
 }
 
-export interface Stylesheet {
-    rules: Rule[];
-}
-export interface AtRule {
-    identifier: string;
-    prelude?: string;
-    block?: any;
-}
-export interface QualifiedRule {}
+export type Stylesheet = Rule[];
 export type Rule = QualifiedRule | AtRule;
+
+export interface AtRule {}
+export interface QualifiedRule {}
 
 const whitespaceRegEx = /[\s\t\n\r\f]*/gym;
 const stringRegEx = /(\"|\')(?:[^\n\r\f\\\1]|\\(?:\$|\n|[0-9a-fA-F]{1,6}\s?))*(:?\1|$)/gym; // Besides $n, parse escape codes
@@ -810,18 +805,73 @@ const numberRegEx = /[\+\-]?(?:\d+\.\d+|\d+|\.\d+)(?:[eE][\+\-]?\d+)?/gym;
 const nameRegEx = /-?(?:(?:[a-zA-Z_]|[^\x00-\x7F]|\\(?:\$|\n|[0-9a-fA-F]{1,6}\s?))(?:[a-zA-Z_0-9\-]*|\\(?:\$|\n|[0-9a-fA-F]{1,6}\s?))*)/gym;
 const nonQuoteURLRegEx = /(:?[^\)\s\t\n\r\f\'\"\(]|\\(?:\$|\n|[0-9a-fA-F]{1,6}\s?))*/gym; // non-printable code point, left out
 
-type TokenType = "<whitespace-token>" | "<string-token>" | "<suffix-match-token>" | "<delim-token>" | "<(-token>" | "<)-token>" | "<substring-match-token>" | "<number-token>" | "<percentage-token>" | "<dimension-token>" | "<ident-token>" | "<comma-token>" | "<CDC-token>" | "<url-token>" | "<function-token>" | "<{-token>" | "<}-token>" | "<[-token>" | "<]-token>" | "<simple-block>" | "<comment-token>" | "<colon-token>" | "<semicolon-token>" | "<CDO-token>" | "<at-keyword-token>" | "<prefix-match-token>" | "<dash-match-token>" | "<include-match-token>" | "<EOF-token>" | "<hash-token>";
+type InputToken = "(" | ")" | "{" | "}" | "[" | "]" | ":" | ";" | "<!--" | "-->" | "^=" | "|=" | "$=" | "*=" | "~=" | "," | undefined /* <EOF-token> */ | InputTokenObject;
 
-interface InputToken {
-    type: TokenType;
+export const enum TokenObjectType {
+    /**
+     * <whitespace-token>
+     */
+    whitespace,
+    /**
+     * <string-token>
+     */
+    string,
+    /**
+     * <delim-token>
+     */
+    delim,
+    /**
+     * <number-token>
+     */
+    number,
+    /**
+     * <percentage-token>
+     */
+    percentage,
+    /**
+     * <dimension-token>
+     */
+    dimension,
+    /**
+     * <ident-token>
+     */
+    ident,
+    /**
+     * <url-token>
+     */
+    url,
+    /**
+     * <function-token>
+     */
+    function,
+    /**
+     * <simple-block>
+     */
+    simpleBlock,
+    /**
+     * <comment-token>
+     */
+    comment,
+    /**
+     * <at-keyword-token>
+     */
+    atKeyword,
+    /**
+     * <hash-token>
+     */
+    hash
+}
+
+interface InputTokenObject {
+    type: TokenObjectType;
     text: string;
 }
 
-interface FunctionInputToken extends InputToken {
+interface FunctionInputToken extends InputTokenObject {
     components: any[];
 }
 
-interface SimpleBlock extends InputToken {
+interface SimpleBlock extends InputTokenObject {
     associatedToken: InputToken;
     values: any[];
 }
@@ -842,7 +892,7 @@ export class CSSParser {
         do {
             inputToken = this.consumeAToken();
             tokens.push(inputToken);
-        } while(inputToken === null || inputToken.type != "<EOF-token>");
+        } while(inputToken);
         return tokens;
     }
 
@@ -852,16 +902,10 @@ export class CSSParser {
     consumeAToken(): InputToken {
         let lastIndex = this.nextInputCodePointIndex;
         this.currentInputToken = this.consumeATokenInternal();
-        if (!this.currentInputToken) {
-            console.log("Null token!");
-            let message = "Unsupported scenario at: " + lastIndex + " : " + this.nextInputCodePointIndex + ", near: " + this.text.substr(lastIndex, 100);
-            throw new Error(message);
-        }
         return this.currentInputToken;
     }
     consumeATokenInternal(): InputToken {
         const codepoint = this.text[this.nextInputCodePointIndex];
-        let result: RegExpExecArray;
         switch(codepoint) {
             case " ":
             case "\t":
@@ -876,7 +920,7 @@ export class CSSParser {
                 this.nextInputCodePointIndex++;
                 let hashName = this.consumeAName();
                 if (hashName) {
-                    return { type: "<hash-token>", text: hashName.text };
+                    return { type: TokenObjectType.hash, text: hashName.text };
                 } else {
                     this.nextInputCodePointIndex--;
                     return this.consumeADelimToken();
@@ -884,7 +928,7 @@ export class CSSParser {
             case "$":
                 if (this.text[this.nextInputCodePointIndex + 1] === "=") {
                     this.nextInputCodePointIndex += 2;
-                    return { type: "<suffix-match-token>", text: "$=" };
+                    return "$=";
                 } else {
                     return this.consumeADelimToken();
                 }
@@ -895,14 +939,14 @@ export class CSSParser {
                 return this.consumeAStringToken();
             case "(":
                 this.nextInputCodePointIndex++;
-                return { type: "<(-token>", text: "{" };
+                return "(";
             case ")":
                 this.nextInputCodePointIndex++;
-                return { type: "<)-token>", text: "{" };
+                return ")";
             case "*":
                 if (this.text[this.nextInputCodePointIndex + 1] === "=") {
                     this.nextInputCodePointIndex += 2;
-                    return { type: "<substring-match-token>", text: "*=" };
+                    return "*=";
                 } else {
                     return this.consumeADelimToken();
                 }
@@ -910,7 +954,7 @@ export class CSSParser {
                 return this.consumeANumericToken() || this.consumeADelimToken();
             case ",":
                 this.nextInputCodePointIndex++;
-                return { type: "<comma-token>", text: "," };
+                return ",";
             case "-":
                 return this.consumeANumericToken() || this.consumeAnIdentLikeToken() || this.consumeCDC() || this.consumeADelimToken();
             case ".":
@@ -924,14 +968,14 @@ export class CSSParser {
                 }
             case ":":
                 this.nextInputCodePointIndex++;
-                return { type: "<colon-token>", text: ":" };
+                return ":";
             case ";":
                 this.nextInputCodePointIndex++;
-                return { type: "<semicolon-token>", text: ";" };
+                return ";";
             case "<":
-                if (this.text.substr(this.nextInputCodePointIndex, 3) === "!--") {
+                if (this.text.substr(this.nextInputCodePointIndex, 4) === "<!--") {
                     this.nextInputCodePointIndex += 3;
-                    return { type: "<CDO-token>", text: "!--" };
+                    return "<!--";
                 } else {
                     return this.consumeADelimToken();
                 }
@@ -939,14 +983,14 @@ export class CSSParser {
                 this.nextInputCodePointIndex++;
                 let name = this.consumeAName();
                 if (name) {
-                    return { type: "<at-keyword-token>", text: name.text };
+                    return { type: TokenObjectType.atKeyword, text: name.text };
                 } else {
                     this.nextInputCodePointIndex--;
                     return this.consumeADelimToken();
                 }
             case "[":
                 this.nextInputCodePointIndex++;
-                return { type: "<[-token>", text: "[" };
+                return "[";
             case "\\":
                 // TODO: Only if this is valid escape, otherwise it is a parse error.
                 let ident = this.consumeAnIdentLikeToken();
@@ -958,19 +1002,19 @@ export class CSSParser {
                 }
             case "]":
                 this.nextInputCodePointIndex++;
-                return { type: "<]-token>", text: "]" };
+                return "]";
             case "^":
                 if (this.text[this.nextInputCodePointIndex + 1] === "=") {
                     this.nextInputCodePointIndex += 2;
-                    return { type: "<prefix-match-token>", text: "^=" };
+                    return "^=";
                 }
                 return this.consumeADelimToken();
             case "{":
                 this.nextInputCodePointIndex++;
-                return { type: "<{-token>", text: "{" };
+                return "{";
             case "}":
                 this.nextInputCodePointIndex++;
-                return { type: "<}-token>", text: "}" };
+                return "}";
             case "0":
             case "1":
             case "2":
@@ -995,19 +1039,19 @@ export class CSSParser {
             case "|":
                 if (this.text[this.nextInputCodePointIndex + 1] === "=") {
                     this.nextInputCodePointIndex += 2;
-                    return { type: "<dash-match-token>", text: "|=" };
+                    return "|=";
                 } else {
                     return this.consumeADelimToken();
                 }
             case "~":
                 if (this.text[this.nextInputCodePointIndex + 1] === "=") {
                     this.nextInputCodePointIndex += 2;
-                    return { type: "<include-match-token>", text: "~=" };
+                    return "~=";
                 } else {
                     return this.consumeADelimToken();
                 }
             case undefined:
-                return { type: "<EOF-token>", text: undefined };
+                return undefined;
             default:
                 return this.consumeAName() // name-start code point
                     || this.consumeADelimToken();
@@ -1016,17 +1060,17 @@ export class CSSParser {
 
     private consumeADelimToken(): InputToken {
         // TODO: Count these, if they are created a lot, try to condense them!
-        return { type: "<delim-token>", text: this.text[this.nextInputCodePointIndex++] };
+        return { type: TokenObjectType.delim, text: this.text[this.nextInputCodePointIndex++] };
     }
 
     private consumeAWhitespace(): InputToken {
         whitespaceRegEx.lastIndex = this.nextInputCodePointIndex;
         const result = whitespaceRegEx.exec(this.text);
         this.nextInputCodePointIndex = whitespaceRegEx.lastIndex;
-        return { type: "<whitespace-token>", text: result[0] };
+        return { type: TokenObjectType.whitespace, text: result[0] };
     }
 
-    private consumeAStringToken(): InputToken {
+    private consumeAStringToken(): InputTokenObject {
         stringRegEx.lastIndex = this.nextInputCodePointIndex;
         const result = stringRegEx.exec(this.text);
         if (!result) {
@@ -1035,7 +1079,7 @@ export class CSSParser {
         this.nextInputCodePointIndex = stringRegEx.lastIndex;
         // TODO: Handle bad-string.
         // TODO: Perform string escaping.
-        return { type: "<string-token>", text: result[0] };
+        return { type: TokenObjectType.string, text: result[0] };
     }
 
     private consumeANumericToken(): InputToken {
@@ -1046,18 +1090,18 @@ export class CSSParser {
         }
         this.nextInputCodePointIndex = numberRegEx.lastIndex;
         if (this.text[this.nextInputCodePointIndex] === "%") {
-            return { type: "<percentage-token>", text: result[0] }; // TODO: Push the actual number and unit here...
+            return { type: TokenObjectType.percentage, text: result[0] }; // TODO: Push the actual number and unit here...
         }
 
         const name = this.consumeAName();
         if (name) {
-            return { type: "<dimension-token>", text: result[0] + name.text };
+            return { type: TokenObjectType.dimension, text: result[0] + name.text };
         }
 
-        return { type: "<number-token>", text: result[0] };
+        return { type: TokenObjectType.number, text: result[0] };
     }
 
-    private consumeAName(): InputToken {
+    private consumeAName(): InputTokenObject {
         nameRegEx.lastIndex = this.nextInputCodePointIndex;
         const result = nameRegEx.exec(this.text);
         if (!result) {
@@ -1065,7 +1109,7 @@ export class CSSParser {
         }
         this.nextInputCodePointIndex = nameRegEx.lastIndex;
         // TODO: Perform string escaping.
-        return { type: "<ident-token>", text: result[0] };
+        return { type: TokenObjectType.ident, text: result[0] };
     }
 
     private consumeAnIdentLikeToken(): InputToken {
@@ -1083,14 +1127,15 @@ export class CSSParser {
         return name;
     }
 
-    private consumeCDC(): InputToken {
+    private consumeCDC(): "-->" | null {
         if (this.text.substr(this.nextInputCodePointIndex, 3) === "-->") {
-            return { type: "<CDC-token>", text: "-->" };
+            return "-->";
         }
+        return null;
     }
 
     private consumeAnURLToken(): InputToken {
-        const urlToken: InputToken = { type: "<url-token>", text: undefined };
+        const urlToken: InputToken = { type: TokenObjectType.url, text: undefined };
         this.consumeAWhitespace();
         if (this.nextInputCodePointIndex >= this.text.length) {
             return urlToken;
@@ -1129,7 +1174,7 @@ export class CSSParser {
     }
 
     private consumeAFunction(name: string): InputToken {
-        const funcToken: FunctionInputToken = { type: "<function-token>", text: undefined, components: [] };
+        const funcToken: FunctionInputToken = { type: TokenObjectType.function, text: undefined, components: [] };
         do {
             if (this.nextInputCodePointIndex >= this.text.length) {
                 return funcToken;
@@ -1150,26 +1195,28 @@ export class CSSParser {
 
     private consumeAComponentValue(): InputToken {
         const token = this.consumeAToken();
-        switch(token.type) {
-            case "<{-token>":
-            case "<[-token>":
-            case "<(-token>":
-                return this.consumeASimpleBlock();
-            case "<function-token>":
-                return this.consumeAFunction(token.text);
-            default:
-                return token;
+        if (typeof token === "string") {
+            switch(token) {
+                case "{":
+                case "[":
+                case "(":
+                    return this.consumeASimpleBlock();
+            }
+        } else if (token.type === TokenObjectType.function) {
+            return this.consumeAFunction(token.text);
+        } else {
+            return token;
         }
     }
 
     private consumeASimpleBlock(): SimpleBlock {
-        const endianToken: "<]-token>" | "<}-token>" | "<)-token>" = {
-            "<[-token>": "<]-token>",
-            "<{-token>": "<}-token>",
-            "<(-token>": "<)-token>"
-        }[this.currentInputToken.type];
+        const endianToken: "]" | "}" | ")" = {
+            "[": "]",
+            "{": "}",
+            "(": ")"
+        }[<any>this.currentInputToken];
         const block: SimpleBlock = {
-            type: "<simple-block>",
+            type: TokenObjectType.simpleBlock,
             text: undefined,
             associatedToken: this.currentInputToken,
             values: []
@@ -1179,7 +1226,7 @@ export class CSSParser {
                 return block;
             }
             const token = this.consumeAToken();
-            if (token.type === endianToken) {
+            if (token === endianToken) {
                 return block;
             }
             this.reconsumeTheCurrentInputToken();
@@ -1195,7 +1242,7 @@ export class CSSParser {
             return null; // TODO: Handle <bad-comment>
         }
         this.nextInputCodePointIndex = commentRegEx.lastIndex;
-        return { type: "<comment-token>", text: result[0] };
+        return { type: TokenObjectType.comment, text: result[0] };
     }
 
     private reconsumeTheCurrentInputToken() {

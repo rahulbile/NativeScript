@@ -7,7 +7,8 @@ import {
     parseBackground,
     parseSelector,
     AttributeSelectorTest,
-    CSSParser
+    CSSParser,
+    TokenObjectType
 } from "tns-core-modules/css/parser";
 import {
     parse
@@ -17,6 +18,8 @@ import * as fs from "fs";
 
 import * as shadyCss from 'shady-css-parser';
 import * as reworkCss from 'css';
+
+const parseCss: any = require('parse-css');
 
 describe("css", () => {
     describe("parser", () => {
@@ -213,11 +216,9 @@ describe("css", () => {
 
                 let original = themeCoreLightIos.replace(/\/\*([^\/]|\/[^\*])*\*\//g, "");
                 let roundtrip = stylesheet.map(m => {
-                    if (m.type === "<hash-token>") {
-                        return "#" + m.text;
-                    } else {
-                        return m.text;
-                    }
+                    if (typeof m === "string") return m;
+                    if (m.type === TokenObjectType.hash) return "#" + m.text;
+                    return m.text;
                 }).join("");
 
                 let lastIndex = Math.min(original.length, roundtrip.length);
@@ -228,7 +229,7 @@ describe("css", () => {
                 assert.equal(roundtrip.length, original.length, "Expected round-tripped string lengths to match.");
             });
 
-            it.skip("our parser is fast (flaky, gc, opts.)", () => {
+            it.only("our parser is fast (flaky, gc, opts.)", () => {
                 function trapDuration(action: () => void) {
                     const [startSec, startMSec] = process.hrtime();
                     action();
@@ -249,16 +250,25 @@ describe("css", () => {
                     }
                     assert.equal(char, "\n");
                 });
-                const reworkDuration = trapDuration(() => reworkCss.parse(themeCoreLightIos, { source: "nativescript-theme-core/css/core.light.css" }));
+                const reworkDuration = trapDuration(() => {
+                    const ast = reworkCss.parse(themeCoreLightIos, { source: "nativescript-theme-core/css/core.light.css" });
+                    fs.writeFileSync("rework.css.json", JSON.stringify(ast, null, "\t"));
+                });
                 const shadyDuration = trapDuration(() => {
-                    const parser = new shadyCss.Parser();
-                    const ast = parser.parse(themeCoreLightIos);
+                    const shadyParser = new shadyCss.Parser();
+                    const ast = shadyParser.parse(themeCoreLightIos);
+                    fs.writeFileSync("shady.css.json", JSON.stringify(ast, null, "\t"));
+                });
+                const parseCssDuration = trapDuration(() => {
+                    const tokens = parseCss.tokenize(themeCoreLightIos);
+                    const ast = parseCss.parseAStylesheet(tokens);
+                    fs.writeFileSync("parse.css.json", JSON.stringify(ast, null, "\t"));
                 });
                 const nativescriptDuration = trapDuration(() => {
                     const cssparser = new CSSParser(themeCoreLightIos);
                     const stylesheet = cssparser.tokenize();
                 });
-                console.log(`codes-baseline: ${charCodeByCharCodeDuration}ms. chars-baseline: ${charByCharDuration}ms. rework: ${reworkDuration}ms. shady: ${shadyDuration}ms. nativescript: ${nativescriptDuration}ms.`);
+                console.log(`codes-baseline: ${charCodeByCharCodeDuration}ms. chars-baseline: ${charByCharDuration}ms. rework: ${reworkDuration}ms. shady: ${shadyDuration}ms. parse-css: ${parseCssDuration}ms. nativescript: ${nativescriptDuration}ms.`);
                 assert.isAtMost(nativescriptDuration, reworkDuration / 8, "The NativeScript CSS owns in times the rework css parses");
                 assert.isAtMost(nativescriptDuration, shadyDuration / 3, "The NativeScript CSS owns in times the shady css parses");
             });
