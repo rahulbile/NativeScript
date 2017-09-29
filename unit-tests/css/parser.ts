@@ -204,32 +204,121 @@ describe("css", () => {
             ]});
         });
 
-        describe("stylesheet", () => {
+        describe("css3", () => {
             let themeCoreLightIos: string;
+            let whatIsNewIos: string;
+
             before("Read the core.light.css file", () => {
                 themeCoreLightIos = fs.readFileSync(`${__dirname}/assets/core.light.css`).toString();
+                whatIsNewIos = fs.readFileSync(`${__dirname}/assets/what-is-new.ios.css`).toString();
             });
 
-            it("the tokenizer roundtrips the core.light.css theme", () => {
-                const cssparser = new CSSParser(themeCoreLightIos);
-                const stylesheet = cssparser.tokenize();
+            describe("tokenizer", () => {
+                it("the tokenizer roundtrips the core.light.css theme", () => {
+                    const cssparser = new CSSParser(themeCoreLightIos);
+                    const stylesheet = cssparser.tokenize();
 
-                let original = themeCoreLightIos.replace(/\/\*([^\/]|\/[^\*])*\*\//g, "");
-                let roundtrip = stylesheet.map(m => {
-                    if (typeof m === "string") return m;
-                    if (m.type === TokenObjectType.hash) return "#" + m.text;
-                    return m.text;
-                }).join("");
+                    let original = themeCoreLightIos.replace(/\/\*([^\/]|\/[^\*])*\*\//g, "").replace(/\n/g, " ");
+                    let roundtrip = stylesheet.map(m => {
+                        if (!m) return "";
+                        if (typeof m === "string") return m;
+                        if (m.type === TokenObjectType.hash) return "#" + m.text;
+                        if (m.type === TokenObjectType.string) return "'" + m.text + "'";
+                        return m.text;
+                    }).join("");
 
-                let lastIndex = Math.min(original.length, roundtrip.length);
-                for(var i = 0; i < lastIndex; i++)
-                    if (original[i] != roundtrip[i])
-                        assert.equal(roundtrip.substr(i, 50), original.substr(i, 50), "Round-tripped CSS string differ at index: " + i);
+                    let lastIndex = Math.min(original.length, roundtrip.length);
+                    for(var i = 0; i < lastIndex; i++)
+                        if (original[i] != roundtrip[i])
+                            assert.equal(roundtrip.substr(i, 50), original.substr(i, 50), "Round-tripped CSS string differ at index: " + i);
 
-                assert.equal(roundtrip.length, original.length, "Expected round-tripped string lengths to match.");
+                    assert.equal(roundtrip.length, original.length, "Expected round-tripped string lengths to match.");
+                });
+
+                it("test what-is-new.ios.css from nativescript-marketplace-demo", () => {
+                    const parser = new CSSParser(whatIsNewIos);
+                    const tokens = parser.tokenize();
+                    assert.deepEqual(tokens, [
+                        { type: TokenObjectType.atKeyword, text: "import" },
+                        " ",
+                        { type: TokenObjectType.url, text: "~/views/what-is-new-common.css" },
+                        ";", " ",
+                        { type: TokenObjectType.delim, text: "." },
+                        { type: TokenObjectType.ident, text: "news-card" },
+                        " ", "{", " ",
+                        { type: TokenObjectType.ident, text: "margin" },
+                        ":", " ",
+                        { type: TokenObjectType.number, text: "12" },
+                        " ",
+                        { type: TokenObjectType.number, text: "12" },
+                        " ",
+                        { type: TokenObjectType.number, text: "0" },
+                        " ",
+                        { type: TokenObjectType.number, text: "12" },
+                        ";", " ", "}", " ",
+                        { type: TokenObjectType.delim, text: "." },
+                        { type: TokenObjectType.ident, text: "title" },
+                        " ", "{", " ",
+                        { type: TokenObjectType.ident, text: "font-size" },
+                        ":", " ",
+                        { type: TokenObjectType.number, text: "14" },
+                        ";", " ", "}", " ",
+                        { type: TokenObjectType.delim, text: "." },
+                        { type: TokenObjectType.ident, text: "body" },
+                        " ", "{", " ",
+                        { type: TokenObjectType.ident, text: "font-size" },
+                        ":", " ",
+                        { type: TokenObjectType.number, text: "14" },
+                        ";", " ", "}", " ",
+                        { type: TokenObjectType.delim, text: "." },
+                        { type: TokenObjectType.ident, text: "learn-more" },
+                        " ", "{", " ",
+                        { type: TokenObjectType.ident, text: "font-size" },
+                        ":", " ",
+                        { type: TokenObjectType.number, text: "14" },
+                        ";", " ", "}", " ",
+                        { type: TokenObjectType.delim, text: "." },
+                        { type: TokenObjectType.ident, text: "date" },
+                        " ", "{", " ",
+                        { type: TokenObjectType.ident, text: "font-size" },
+                        ":", " ",
+                        { type: TokenObjectType.number, text: "12" },
+                        ";", " ", "}", " ",
+                        { type: TokenObjectType.delim, text: "." },
+                        { type: TokenObjectType.ident, text: "empty-placeholder" },
+                        " ", "{", " ",
+                        { type: TokenObjectType.ident, text: "vertical-align" },
+                        ":", " ",
+                        { type: TokenObjectType.ident, text: "center" },
+                        ";", " ",
+                        { type: TokenObjectType.ident, text: "text-align" },
+                        ":", " ",
+                        { type: TokenObjectType.ident, text: "center" },
+                        ";", " ", "}",
+                        undefined // EOF
+                    ]);
+                });
             });
 
-            it.only("our parser is fast (flaky, gc, opts.)", () => {
+            describe("parser", () => {
+                it("test what-is-new.ios.css from nativescript-marketplace-demo", () => {
+                    const parser = new CSSParser(whatIsNewIos);
+                    const stylesheet = parser.parseAStylesheet();
+                    // console.log(JSON.stringify(stylesheet, null, "\t"));
+                    // TODO: Assert...
+                });
+            });
+
+            it("serialization", () => {
+                const reworkAst = reworkCss.parse(themeCoreLightIos, { source: "nativescript-theme-core/css/core.light.css" });
+                fs.writeFileSync("unit-tests/css/out/rework.css.json", JSON.stringify(reworkAst, (k, v) => k === "position" ? undefined : v, "  "));
+
+                const nsParser = new CSSParser(themeCoreLightIos);
+                const nativescriptAst = nsParser.parseAStylesheet();
+                fs.writeFileSync("unit-tests/css/out/nativescript.css.json", JSON.stringify(nativescriptAst, null, "  "));
+            });
+
+            it("our parser is fast (this test is flaky, gc, opts.)", () => {
                 function trapDuration(action: () => void) {
                     const [startSec, startMSec] = process.hrtime();
                     action();
@@ -241,7 +330,7 @@ describe("css", () => {
                     for (let i = 0; i < themeCoreLightIos.length; i++) {
                         count += themeCoreLightIos.charCodeAt(i);
                     }
-                    assert.equal(count, 1218789);
+                    assert.equal(count, 1218711);
                 });
                 const charByCharDuration = trapDuration(() => {
                     let char;
@@ -250,27 +339,62 @@ describe("css", () => {
                     }
                     assert.equal(char, "\n");
                 });
+                const compareCharIfDuration = trapDuration(() => {
+                    let char;
+                    let c = 0;
+                    for (let i = 0; i < themeCoreLightIos.length; i++) {
+                        const char = themeCoreLightIos[i];
+                        if ((char >= "a" && char <= "z") || (char >= "A" && char <= "Z") || char === "_") {
+                            c++;
+                        }
+                    }
+                    assert.equal(c, 8774);
+                });
+                const compareCharRegEx = /[a-zA-Z_]/;
+                const compareCharRegExDuration = trapDuration(() => {
+                    let char;
+                    let c = 0;
+                    for (let i = 0; i < themeCoreLightIos.length; i++) {
+                        const char = themeCoreLightIos[i];
+                        if (compareCharRegEx.test(char)) {
+                            c++;
+                        }
+                    }
+                    assert.equal(c, 8774);
+                });
+                const indexerDuration = trapDuration(() => {
+                    let char;
+                    for (let i = 0; i < themeCoreLightIos.length; i++) {
+                        char = themeCoreLightIos[i];
+                    }
+                    assert.equal(char, "\n");
+                });
                 const reworkDuration = trapDuration(() => {
                     const ast = reworkCss.parse(themeCoreLightIos, { source: "nativescript-theme-core/css/core.light.css" });
-                    fs.writeFileSync("rework.css.json", JSON.stringify(ast, null, "\t"));
+                    // fs.writeFileSync("rework.css.json", JSON.stringify(ast, null, "\t"));
                 });
                 const shadyDuration = trapDuration(() => {
                     const shadyParser = new shadyCss.Parser();
                     const ast = shadyParser.parse(themeCoreLightIos);
-                    fs.writeFileSync("shady.css.json", JSON.stringify(ast, null, "\t"));
+                    // fs.writeFileSync("shady.css.json", JSON.stringify(ast, null, "\t"));
                 });
                 const parseCssDuration = trapDuration(() => {
                     const tokens = parseCss.tokenize(themeCoreLightIos);
                     const ast = parseCss.parseAStylesheet(tokens);
-                    fs.writeFileSync("parse.css.json", JSON.stringify(ast, null, "\t"));
+                    // fs.writeFileSync("parse.css.json", JSON.stringify(ast, null, "\t"));
                 });
-                const nativescriptDuration = trapDuration(() => {
+                const nativescriptTokenizeDuration = trapDuration(() => {
                     const cssparser = new CSSParser(themeCoreLightIos);
                     const stylesheet = cssparser.tokenize();
                 });
-                console.log(`codes-baseline: ${charCodeByCharCodeDuration}ms. chars-baseline: ${charByCharDuration}ms. rework: ${reworkDuration}ms. shady: ${shadyDuration}ms. parse-css: ${parseCssDuration}ms. nativescript: ${nativescriptDuration}ms.`);
-                assert.isAtMost(nativescriptDuration, reworkDuration / 8, "The NativeScript CSS owns in times the rework css parses");
-                assert.isAtMost(nativescriptDuration, shadyDuration / 3, "The NativeScript CSS owns in times the shady css parses");
+                const nativescriptParseDuration = trapDuration(() => {
+                    const cssparser = new CSSParser(themeCoreLightIos);
+                    const stylesheet = cssparser.parseAStylesheet();
+                });
+                console.log(`          * Baseline perf: .charCodeAt: ${charCodeByCharCodeDuration}ms. .charAt: ${charByCharDuration}ms. []:${indexerDuration}ms. compareCharIf: ${compareCharIfDuration} compareCharRegEx: ${compareCharRegExDuration}`);
+                console.log(`          * Parsers perf: rework: ${reworkDuration}ms. shady: ${shadyDuration}ms. parse-css: ${parseCssDuration}ms. nativescript-tokenize: ${nativescriptTokenizeDuration}ms. nativescript-parse: ${nativescriptParseDuration}ms.`);
+                assert.isAtMost(nativescriptParseDuration, reworkDuration / 3);
+                assert.isAtMost(nativescriptParseDuration, shadyDuration / 1.5);
             });
         });
     });
